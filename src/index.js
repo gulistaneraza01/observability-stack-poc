@@ -1,5 +1,7 @@
 import express from "express";
 import client from "prom-client";
+import winston, { createLogger } from "winston";
+import LokiTransport from "winston-loki";
 
 const app = express();
 app.disable("x-powered-by");
@@ -10,6 +12,21 @@ const collectDefaultMetrics = client.collectDefaultMetrics;
 const Registry = client.Registry;
 const register = new Registry();
 collectDefaultMetrics({ register });
+
+const options = {
+  transports: [
+    new winston.transports.Console(),
+    new LokiTransport({
+      labels: { appName: "nodejs" },
+      host: "http://127.0.0.1:3100",
+    }),
+  ],
+};
+const logger = createLogger(options);
+console.log = (...args) => logger.info(args.join(" "));
+console.error = (...args) => logger.error(args.join(" "));
+console.warn = (...args) => logger.warn(args.join(" "));
+console.info = (...args) => logger.info(args.join(" "));
 
 const httpRequestsTotal = new client.Counter({
   name: "http_requests_total",
@@ -59,10 +76,13 @@ app.get("/metrics", async (req, res) => {
 });
 
 app.get("/", async (req, res) => {
+  console.log("request came in / routh");
   res.json({ message: "Hello World" });
 });
 
 app.get("/slow", async (req, res) => {
+  console.log("request came in /slow routh");
+
   try {
     const delay = Math.floor(Math.random() * 2500) + 500;
     await new Promise((resolve) => setTimeout(resolve, delay));
@@ -71,8 +91,10 @@ app.get("/slow", async (req, res) => {
       throw new Error("Internal Server Error");
     }
 
+    console.log(`Responded in ${delay}ms`);
     res.json({ message: `Responded in ${delay}ms` });
   } catch (error) {
+    console.error(`Internal Server Error:) ${error.message}`);
     res.status(500).json({ error: `Internal Server Error:) ${error.message}` });
   }
 });
