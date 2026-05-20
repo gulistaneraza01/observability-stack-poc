@@ -1,3 +1,2 @@
 #!/bin/sh
-# add your pre-commit checks here (lint, format, etc.)
-# or leave empty if not needed
+pnpm precommit
