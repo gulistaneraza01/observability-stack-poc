@@ -1,7 +1,6 @@
 import express from "express";
 import client from "prom-client";
-import winston, { createLogger } from "winston";
-import LokiTransport from "winston-loki";
+import logger from "./logger.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -12,21 +11,6 @@ const collectDefaultMetrics = client.collectDefaultMetrics;
 const Registry = client.Registry;
 const register = new Registry();
 collectDefaultMetrics({ register });
-
-const options = {
-  transports: [
-    new winston.transports.Console(),
-    new LokiTransport({
-      labels: { appName: "nodejs" },
-      host: "http://127.0.0.1:3100",
-    }),
-  ],
-};
-const logger = createLogger(options);
-console.log = (...args) => logger.info(args.join(" "));
-console.error = (...args) => logger.error(args.join(" "));
-console.warn = (...args) => logger.warn(args.join(" "));
-console.info = (...args) => logger.info(args.join(" "));
 
 const httpRequestsTotal = new client.Counter({
   name: "http_requests_total",
@@ -65,6 +49,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// logs every request automatically
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on("finish", () => {
+    logger.info("HTTP Request", {
+      method: req.method,
+      route: req.path,
+      status: res.statusCode,
+      duration: `${Date.now() - start}ms`,
+      ip: req.ip,
+    });
+  });
+
+  next();
+});
+
 app.get("/metrics", async (req, res) => {
   try {
     res.set("Content-Type", register.contentType);
@@ -76,12 +77,12 @@ app.get("/metrics", async (req, res) => {
 });
 
 app.get("/", async (req, res) => {
-  console.log("request came in / routh");
+  logger.info("request came in / routh");
   res.json({ message: "Hello World" });
 });
 
 app.get("/slow", async (req, res) => {
-  console.log("request came in /slow routh");
+  logger.info("request came in /slow routh");
 
   try {
     const delay = Math.floor(Math.random() * 2500) + 500;
@@ -91,14 +92,24 @@ app.get("/slow", async (req, res) => {
       throw new Error("Internal Server Error");
     }
 
-    console.log(`Responded in ${delay}ms`);
+    logger.log(`Responded in ${delay}ms`);
     res.json({ message: `Responded in ${delay}ms` });
   } catch (error) {
-    console.error(`Internal Server Error:) ${error.message}`);
+    logger.error(`Internal Server Error:) ${error.message}`);
     res.status(500).json({ error: `Internal Server Error:) ${error.message}` });
   }
 });
 
+// Catch unhandled errors and send to Loki
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception", { error: err.message, stack: err.stack });
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled Rejection", { reason });
+});
+
 app.listen(port, () => {
-  console.log("Server is running on port: ", port);
+  logger.info(`Server is running on port: ${port}`);
 });
