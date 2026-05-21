@@ -1,0 +1,28 @@
+groups:
+  - name: express_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.route }}"
+          description: "{{ $value | humanize }} errors/sec"
+
+      - alert: ServerDown
+        expr: up{job="express-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Express app is down"
+
+      - alert: AnyErrorOccurred
+        expr: increase(http_errors_total[1m]) >= 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "An error occurred on {{ $labels.route }}"
+          description: "At least one error detected in the last minute: {{ $value | humanize }} errors"
